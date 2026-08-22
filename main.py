@@ -6,32 +6,6 @@ import clickhouse_connect
 from jinja2 import Template
 
 
-# ============================================================
-# Настройки
-# ============================================================
-# Можно выбрать формат:
-#   DOC_FORMAT=md
-#   DOC_FORMAT=html
-#
-# Приоритет:
-#   1. аргумент командной строки: md / html
-#   2. переменная DOC_FORMAT в .env / окружении
-#   3. md по умолчанию
-#
-# Примеры:
-#   python database_schema.py md
-#   python database_schema.py html
-#   python database_schema.py
-#
-# Подключение ClickHouse также можно настроить через .env:
-#   CLICKHOUSE_HOST=localhost
-#   CLICKHOUSE_PORT=8123
-#   CLICKHOUSE_USER=default
-#   CLICKHOUSE_PASSWORD=
-#   CLICKHOUSE_DATABASE=
-# ============================================================
-
-
 def load_env_file(path=".env"):
     """Простой загрузчик .env без дополнительных зависимостей."""
     env_path = Path(path)
@@ -89,7 +63,7 @@ client = clickhouse_connect.get_client(
 # ============================================================
 # Получаем список таблиц
 # ============================================================
-tables = client.query("""
+tables = client.query(f"""
     SELECT
         database,
         name,
@@ -99,7 +73,7 @@ tables = client.query("""
         metadata_modification_time,
         comment
     FROM system.tables
-    WHERE database NOT IN ('system', 'INFORMATION_SCHEMA')
+    WHERE database = '{CLICKHOUSE_DATABASE}'
       AND engine NOT IN ('View', 'MaterializedView')
     ORDER BY database, name
 """).result_rows
@@ -108,7 +82,7 @@ tables = client.query("""
 # ============================================================
 # Получаем структуру таблиц
 # ============================================================
-columns = client.query("""
+columns = client.query(f"""
     SELECT
         database,
         table,
@@ -118,7 +92,7 @@ columns = client.query("""
         default_expression,
         comment
     FROM system.columns
-    WHERE database NOT IN ('system', 'INFORMATION_SCHEMA')
+    WHERE database = '{CLICKHOUSE_DATABASE}'
     ORDER BY database, table, position
 """).result_rows
 
@@ -126,32 +100,30 @@ columns = client.query("""
 # ============================================================
 # Материализованные представления
 # ============================================================
-mv = client.query("""
+mv = client.query(f"""
     SELECT
         database,
         name,
-        query,
         engine,
         comment
     FROM system.tables
     WHERE engine = 'MaterializedView'
-      AND database NOT IN ('system', 'INFORMATION_SCHEMA')
-    ORDER BY database, name
+      AND database = '{CLICKHOUSE_DATABASE}'
+    ORDER BY database ASC, name ASC
 """).result_rows
 
 
 # ============================================================
 # Представления VIEW
 # ============================================================
-views = client.query("""
+views = client.query(f"""
     SELECT
         database,
         name,
-        create_table_query,
         comment
     FROM system.tables
     WHERE engine = 'View'
-      AND database NOT IN ('system', 'INFORMATION_SCHEMA')
+      AND database = '{CLICKHOUSE_DATABASE}'
     ORDER BY database, name
 """).result_rows
 
@@ -163,29 +135,34 @@ generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def mb(value):
+    if value is None:
+        return "—"
     return round(value / 1024 / 1024, 2)
 
 
 # ============================================================
 # Markdown
 # ============================================================
-MD_TEMPLATE = Template(r"""# Документация базы данных
+MD_TEMPLATE = Template(r"""# 📊 Документация базы данных ClickHouse
 
-> Сгенерировано: **{{ generated_at }}**
-
-## Содержание
-
-- [Таблицы](#таблицы)
-- [Материализованные представления](#материализованные-представления)
-- [Представления VIEW](#представления-view)
+**База данных:** `{{ database }}`  
+**Сгенерировано:** {{ generated_at }}
 
 ---
 
-## Таблицы
+## 📑 Содержание
+
+- [📋 Таблицы](#таблицы)
+- [🔄 Материализованные представления](#материализованные-представления)
+- [👁️ Представления VIEW](#представления-view)
+
+---
+
+## 📋 Таблицы
 
 {% if tables %}
 {% for db, name, engine, rows, bytes, modified, comment in tables %}
-### `{{ db }}.{{ name }}`
+### `{{ name }}`
 
 | Параметр | Значение |
 |---|---|
@@ -199,9 +176,9 @@ MD_TEMPLATE = Template(r"""# Документация базы данных
 
 | # | Поле | Тип | Значение по умолчанию | Комментарий |
 |---:|---|---|---|---|
-{% for col in columns if col[0] == db and col[1] == name %}
+{%- for col in columns if col[0] == db and col[1] == name %}
 | {{ col[4] }} | `{{ col[2] }}` | `{{ col[3] }}` | `{{ col[5] or '—' }}` | {{ col[6] or '—' }} |
-{% endfor %}
+{%- endfor %}
 
 ---
 {% endfor %}
@@ -209,22 +186,16 @@ MD_TEMPLATE = Template(r"""# Документация базы данных
 Таблицы отсутствуют.
 {% endif %}
 
-## Материализованные представления
+## 🔄 Материализованные представления
 
 {% if mv %}
-{% for db, name, query, engine, comment in mv %}
-### `{{ db }}.{{ name }}`
+{% for db, name, engine, comment in mv %}
+### `{{ name }}`
 
 | Параметр | Значение |
 |---|---|
 | Движок | `{{ engine }}` |
 | Комментарий | {{ comment or '—' }} |
-
-#### Запрос
-
-```sql
-{{ query }}
-```
 
 ---
 {% endfor %}
@@ -232,21 +203,15 @@ MD_TEMPLATE = Template(r"""# Документация базы данных
 Материализованные представления отсутствуют.
 {% endif %}
 
-## Представления VIEW
+## 👁️ Представления VIEW
 
 {% if views %}
-{% for db, name, query, comment in views %}
-### `{{ db }}.{{ name }}`
+{% for db, name, comment in views %}
+### `{{ name }}`
 
 | Параметр | Значение |
 |---|---|
 | Комментарий | {{ comment or '—' }} |
-
-#### Создание
-
-```sql
-{{ query }}
-```
 
 ---
 {% endfor %}
@@ -255,369 +220,123 @@ MD_TEMPLATE = Template(r"""# Документация базы данных
 {% endif %}
 """)
 
-
 # ============================================================
 # HTML
 # ============================================================
 HTML_TEMPLATE = Template(r"""<!DOCTYPE html>
 <html lang="ru">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Документация базы данных</title>
-<style>
-    :root {
-        color-scheme: light;
-        --bg: #f4f6f8;
-        --card: #ffffff;
-        --text: #20252b;
-        --muted: #6b7280;
-        --border: #e5e7eb;
-        --accent: #2563eb;
-        --code-bg: #f3f4f6;
-        --header-bg: #111827;
-    }
-
-    * {
-        box-sizing: border-box;
-    }
-
-    html {
-        scroll-behavior: smooth;
-    }
-
-    body {
-        margin: 0;
-        background: var(--bg);
-        color: var(--text);
-        font-family:
-            -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-            Helvetica, Arial, sans-serif;
-        line-height: 1.6;
-    }
-
-    .container {
-        width: min(1200px, calc(100% - 32px));
-        margin: 0 auto;
-    }
-
-    header {
-        background: var(--header-bg);
-        color: white;
-        padding: 42px 0;
-        margin-bottom: 28px;
-    }
-
-    header h1 {
-        margin: 0 0 8px;
-        font-size: 32px;
-        letter-spacing: -0.02em;
-    }
-
-    header p {
-        margin: 0;
-        color: #d1d5db;
-    }
-
-    nav {
-        background: var(--card);
-        border: 1px solid var(--border);
-        border-radius: 12px;
-        padding: 20px 24px;
-        margin-bottom: 24px;
-    }
-
-    nav h2 {
-        margin-top: 0;
-        font-size: 18px;
-    }
-
-    nav a {
-        color: var(--accent);
-        text-decoration: none;
-    }
-
-    nav a:hover {
-        text-decoration: underline;
-    }
-
-    section {
-        background: var(--card);
-        border: 1px solid var(--border);
-        border-radius: 12px;
-        padding: 28px;
-        margin-bottom: 24px;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
-    }
-
-    h2 {
-        margin-top: 0;
-        font-size: 26px;
-    }
-
-    h3 {
-        margin-top: 28px;
-        font-size: 20px;
-        color: var(--accent);
-    }
-
-    .table-title {
-        margin-top: 34px;
-    }
-
-    table {
-        width: 100%;
-        border-collapse: collapse;
-        margin: 16px 0 24px;
-        font-size: 14px;
-    }
-
-    th, td {
-        border: 1px solid var(--border);
-        padding: 9px 11px;
-        text-align: left;
-        vertical-align: top;
-    }
-
-    th {
-        background: #f9fafb;
-        font-weight: 600;
-    }
-
-    tr:nth-child(even) td {
-        background: #fcfcfd;
-    }
-
-    code {
-        background: var(--code-bg);
-        border-radius: 5px;
-        padding: 2px 5px;
-        font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-        font-size: 0.9em;
-    }
-
-    pre {
-        overflow-x: auto;
-        background: #111827;
-        color: #e5e7eb;
-        padding: 18px;
-        border-radius: 8px;
-        line-height: 1.5;
-    }
-
-    pre code {
-        background: transparent;
-        padding: 0;
-        color: inherit;
-    }
-
-    .meta {
-        width: 100%;
-        max-width: 900px;
-    }
-
-    .empty {
-        color: var(--muted);
-        font-style: italic;
-    }
-
-    footer {
-        color: var(--muted);
-        text-align: center;
-        padding: 10px 0 36px;
-        font-size: 13px;
-    }
-
-    @media (max-width: 700px) {
-        .container {
-            width: min(100% - 20px, 1200px);
-        }
-
-        header {
-            padding: 28px 0;
-        }
-
-        header h1 {
-            font-size: 25px;
-        }
-
-        section {
-            padding: 18px;
-        }
-
-        table {
-            display: block;
-            overflow-x: auto;
-            white-space: nowrap;
-        }
-    }
-
-    @media print {
-        body {
-            background: white;
-        }
-
-        header {
-            background: white;
-            color: black;
-            padding: 10px 0;
-        }
-
-        header p {
-            color: #444;
-        }
-
-        section, nav {
-            box-shadow: none;
-            break-inside: avoid;
-        }
-
-        nav {
-            display: none;
-        }
-
-        a {
-            color: black;
-        }
-    }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📊 Документация ClickHouse</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        h1 { color: #333; }
+        h2 { color: #555; margin-top: 30px; border-bottom: 2px solid #007bff; padding-bottom: 10px; }
+        h3 { color: #007bff; }
+        table { border-collapse: collapse; width: 100%; background: white; margin: 15px 0; }
+        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+        th { background: #007bff; color: white; }
+        tr:nth-child(even) { background: #f9f9f9; }
+        .meta { color: #666; font-size: 14px; }
+        code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
+    </style>
 </head>
-
 <body>
-<header>
     <div class="container">
-        <h1>Документация базы данных</h1>
-        <p>Сгенерировано: {{ generated_at }}</p>
-    </div>
-</header>
+        <h1>📊 Документация базы данных ClickHouse</h1>
+        <p class="meta"><strong>База данных:</strong> <code>{{ database }}</code><br><strong>Сгенерировано:</strong> {{ generated_at }}</p>
+        <hr>
 
-<main class="container">
-    <nav>
-        <h2>Содержание</h2>
-        <ul>
-            <li><a href="#tables">Таблицы</a></li>
-            <li><a href="#materialized-views">Материализованные представления</a></li>
-            <li><a href="#views">Представления VIEW</a></li>
-        </ul>
-    </nav>
-
-    <section id="tables">
-        <h2>Таблицы</h2>
-
+        <h2>📋 Таблицы</h2>
         {% if tables %}
-        {% for db, name, engine, rows, bytes, modified, comment in tables %}
-        <h3 class="table-title" id="table-{{ loop.index }}">
-            <code>{{ db }}.{{ name }}</code>
-        </h3>
+            {% for db, name, engine, rows, bytes, modified, comment in tables %}
+            <h3>{{ name }}</h3>
+            <table>
+                <tr><th>Параметр</th><th>Значение</th></tr>
+                <tr><td>Движок</td><td><code>{{ engine }}</code></td></tr>
+                <tr><td>Строк</td><td>{{ rows }}</td></tr>
+                <tr><td>Размер</td><td>{{ mb(bytes) }} MB</td></tr>
+                <tr><td>Изменена</td><td>{{ modified }}</td></tr>
+                <tr><td>Комментарий</td><td>{{ comment or '—' }}</td></tr>
+            </table>
 
-        <table class="meta">
-            <tr><th>Параметр</th><th>Значение</th></tr>
-            <tr><td>Движок</td><td><code>{{ engine }}</code></td></tr>
-            <tr><td>Строк</td><td>{{ rows }}</td></tr>
-            <tr><td>Размер</td><td>{{ mb(bytes) }} MB</td></tr>
-            <tr><td>Изменена</td><td>{{ modified }}</td></tr>
-            <tr><td>Комментарий</td><td>{{ comment or '—' }}</td></tr>
-        </table>
-
-        <h4>Структура</h4>
-        <table>
-            <thead>
-                <tr>
-                    <th>#</th>
-                    <th>Поле</th>
-                    <th>Тип</th>
-                    <th>Значение по умолчанию</th>
-                    <th>Комментарий</th>
-                </tr>
-            </thead>
-            <tbody>
-            {% for col in columns if col[0] == db and col[1] == name %}
-                <tr>
-                    <td>{{ col[4] }}</td>
-                    <td><code>{{ col[2] }}</code></td>
-                    <td><code>{{ col[3] }}</code></td>
-                    <td>{{ col[5] or '—' }}</td>
-                    <td>{{ col[6] or '—' }}</td>
-                </tr>
+            <h4>Структура</h4>
+            <table>
+                <tr><th>#</th><th>Поле</th><th>Тип</th><th>Значение по умолчанию</th><th>Комментарий</th></tr>
+                {%- for col in columns if col[0] == db and col[1] == name %}
+                <tr><td>{{ col[4] }}</td><td><code>{{ col[2] }}</code></td><td><code>{{ col[3] }}</code></td><td><code>{{ col[5] or '—' }}</code></td><td>{{ col[6] or '—' }}</td></tr>
+                {%- endfor %}
+            </table>
             {% endfor %}
-            </tbody>
-        </table>
-        {% endfor %}
         {% else %}
-        <p class="empty">Таблицы отсутствуют.</p>
+            <p>Таблицы отсутствуют.</p>
         {% endif %}
-    </section>
 
-    <section id="materialized-views">
-        <h2>Материализованные представления</h2>
-
+        <h2>🔄 Материализованные представления</h2>
         {% if mv %}
-        {% for db, name, query, engine, comment in mv %}
-        <h3><code>{{ db }}.{{ name }}</code></h3>
-
-        <table class="meta">
-            <tr><th>Параметр</th><th>Значение</th></tr>
-            <tr><td>Движок</td><td><code>{{ engine }}</code></td></tr>
-            <tr><td>Комментарий</td><td>{{ comment or '—' }}</td></tr>
-        </table>
-
-        <h4>Запрос</h4>
-        <pre><code>{{ query }}</code></pre>
-        {% endfor %}
+            {% for db, name, engine, comment in mv %}
+            <h3>{{ name }}</h3>
+            <table>
+                <tr><th>Параметр</th><th>Значение</th></tr>
+                <tr><td>Движок</td><td><code>{{ engine }}</code></td></tr>
+                <tr><td>Комментарий</td><td>{{ comment or '—' }}</td></tr>
+            </table>
+            {% endfor %}
         {% else %}
-        <p class="empty">Материализованные представления отсутствуют.</p>
+            <p>Материализованные представления отсутствуют.</p>
         {% endif %}
-    </section>
 
-    <section id="views">
-        <h2>Представления VIEW</h2>
-
+        <h2>👁️ Представления VIEW</h2>
         {% if views %}
-        {% for db, name, query, comment in views %}
-        <h3><code>{{ db }}.{{ name }}</code></h3>
-
-        <table class="meta">
-            <tr><th>Параметр</th><th>Значение</th></tr>
-            <tr><td>Комментарий</td><td>{{ comment or '—' }}</td></tr>
-        </table>
-
-        <h4>Создание</h4>
-        <pre><code>{{ query }}</code></pre>
-        {% endfor %}
+            {% for db, name, comment in views %}
+            <h3>{{ name }}</h3>
+            <table>
+                <tr><th>Параметр</th><th>Значение</th></tr>
+                <tr><td>Комментарий</td><td>{{ comment or '—' }}</td></tr>
+            </table>
+            {% endfor %}
         {% else %}
-        <p class="empty">Представления отсутствуют.</p>
+            <p>Представления отсутствуют.</p>
         {% endif %}
-    </section>
-
-    <footer>
-        Database Schema Documentation
-    </footer>
-</main>
+    </div>
 </body>
-</html>
-""")
-
+</html>""")
 
 # ============================================================
-# Генерация
+# Генерируем документацию
 # ============================================================
-context = {
-    "tables": tables,
-    "columns": columns,
-    "mv": mv,
-    "views": views,
-    "generated_at": generated_at,
-    "mb": mb,
-}
+if DOC_FORMAT == "md":
+    md_content = MD_TEMPLATE.render(
+        database=CLICKHOUSE_DATABASE,
+        generated_at=generated_at,
+        tables=tables,
+        columns=columns,
+        mv=mv,
+        views=views,
+        mb=mb
+    )
+    
+    output_file = OUTPUT_DIR / f"database_schema.{DOC_FORMAT}"
+    with open(output_file, "w", encoding="utf-8") as f:
+        f.write(md_content)
+    
+    print(f"✅ Документация сгенерирована: {output_file}")
 
-if DOC_FORMAT == "html":
-    output_file = OUTPUT_DIR / "database_schema.html"
-    content = HTML_TEMPLATE.render(**context)
-else:
-    output_file = OUTPUT_DIR / "database_schema.md"
-    content = MD_TEMPLATE.render(**context)
-
-output_file.write_text(content, encoding="utf-8")
-
-print(f"Готово: {output_file}")
-print(f"Формат: {DOC_FORMAT.upper()}")
+elif DOC_FORMAT == "html":
+    html_content = HTML_TEMPLATE.render(
+        database=CLICKHOUSE_DATABASE,
+        generated_at=generated_at,
+        tables=tables,
+        columns=columns,
+        mv=mv,
+        views=views,
+        mb=mb
+    )
+    
+    output_file = OUTPUT_DIR / f"database_schema.{DOC_FORMAT}"
+    with open(output_file, "w", encoding="utf-8") as f:
+        f.write(html_content)
+    
+    print(f"✅ Документация сгенерирована: {output_file}")
