@@ -1,4 +1,5 @@
 import os
+import re
 from pathlib import Path
 from datetime import datetime
 
@@ -61,6 +62,13 @@ client = clickhouse_connect.get_client(
 
 
 # ============================================================
+# Версия ClickHouse
+# ============================================================
+server_info = client.query("SELECT version()").result_rows
+clickhouse_version = server_info[0][0] if server_info else None
+
+
+# ============================================================
 # Получаем список таблиц
 # ============================================================
 tables = client.query(f"""
@@ -70,11 +78,13 @@ tables = client.query(f"""
         engine,
         total_rows,
         total_bytes,
-        metadata_modification_time,
-        comment
+        metadata_modification_time,  -- время последнего изменения СТРУКТУРЫ (DDL), а не данных
+        comment,
+        sorting_key,
+        primary_key
     FROM system.tables
     WHERE database = '{CLICKHOUSE_DATABASE}'
-      AND engine NOT IN ('View', 'MaterializedView')
+      AND engine NOT IN ('View', 'MaterializedView', 'Dictionary')
     ORDER BY database, name
 """).result_rows
 
@@ -100,12 +110,13 @@ columns = client.query(f"""
 # ============================================================
 # Материализованные представления
 # ============================================================
-mv = client.query(f"""
+mv_raw = client.query(f"""
     SELECT
         database,
         name,
         engine,
-        comment
+        comment,
+        create_table_query
     FROM system.tables
     WHERE engine = 'MaterializedView'
       AND database = '{CLICKHOUSE_DATABASE}'
@@ -129,23 +140,123 @@ views = client.query(f"""
 
 
 # ============================================================
+# Словари
+# ============================================================
+dict_raw = client.query(f"""
+    SELECT
+        t.database,
+        t.name,
+        t.comment,
+        d.source
+    FROM system.tables AS t
+    LEFT JOIN system.dictionaries AS d
+      ON t.database = d.database AND t.name = d.name
+    WHERE t.database = '{CLICKHOUSE_DATABASE}'
+      AND t.engine = 'Dictionary'
+    ORDER BY t.name ASC
+""").result_rows
+
+
+# ============================================================
 # Данные для шаблонов
 # ============================================================
-generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+generated_at = datetime.now().strftime("%d-%m-%Y")
 
 
-def mb(value):
+def format_size(value):
+    """Форматирует размер таблицы в читаемый вид (B, KB, MB, GB).
+
+    value — размер в байтах (total_bytes из system.tables).
+    Для мелких таблиц возвращает KB/B, чтобы не показывать «0.0 MB».
+    """
     if value is None:
         return "—"
-    return round(value / 1024 / 1024, 2)
+    value = float(value)
+    for unit in ("B", "KB", "MB", "GB", "TB", "PB"):
+        if value < 1024.0 or unit == "PB":
+            if unit == "B":
+                return f"{int(value)} {unit}"
+            return f"{value:.2f} {unit}"
+        value /= 1024.0
+
+
+def clean_identifier(name):
+    """Убирает обратные кавычки и префикс базы данных из имени таблицы."""
+    if not name:
+        return None
+    name = name.replace("`", "").strip()
+    if "." in name:
+        name = name.rsplit(".", 1)[-1]
+    return name
+
+
+def extract_mv_target(create_query):
+    """Извлекает целевую таблицу из 'CREATE MATERIALIZED VIEW ... TO <table> ...'."""
+    if not create_query:
+        return None
+    m = re.search(r"\bTO\s+([^\s]+)", create_query, re.IGNORECASE)
+    if not m:
+        return None
+    return clean_identifier(m.group(1))
+
+
+def parse_dict_source(source):
+    """Разбирает колонку source словаря. Возвращает (описание, исходная таблица).
+
+    В разных версиях ClickHouse source бывает String ('тип: бд.таблица')
+    или Map(String, String). Если конкретная таблица не задана (источник
+    через query и т.п.), исходная таблица = None.
+    """
+    if not source:
+        return None, None
+
+    if isinstance(source, dict):
+        stype = source.get("type")
+        table = source.get("table") or ""
+        db = source.get("db") or ""
+    else:
+        text = str(source)
+        stype, _, rest = text.partition(":")
+        stype = stype.strip() or None
+        rest = rest.strip()
+        if "." in rest:
+            db, table = rest.rsplit(".", 1)
+        else:
+            db, table = rest, ""
+        db = db.strip() or None
+        table = table.strip() or None
+
+    desc = ": ".join(p for p in (stype, db) if p) or None
+    if table:
+        desc = f"{desc}.{table}" if desc else table
+
+    source_table = f"{db}.{table}" if db and table else None
+    return desc, source_table
+
+
+# Обрабатываем материализованные представления: добавляем целевую таблицу (TO ...)
+mv = [
+    (db, name, engine, comment, extract_mv_target(create_query))
+    for db, name, engine, comment, create_query in mv_raw
+]
+
+# Обрабатываем словари: добавляем описание источника и исходную таблицу
+dictionaries = []
+for db, name, comment, source in dict_raw:
+    source_desc, source_table = parse_dict_source(source)
+    dictionaries.append((db, name, comment, source_desc, source_table))
 
 
 # ============================================================
 # Markdown
 # ============================================================
-MD_TEMPLATE = Template(r"""# 📊 Документация базы данных ClickHouse
+MD_TEMPLATE = Template(r"""# 📊 Документация по объектам БД
+**СУБД:** `ClickHouse (v.{{ clickhouse_version }})`
 
-**База данных:** `{{ database }}`  
+**Контур:** `Stage`
+
+**БД:** `{{ database }}`  
+
 **Сгенерировано:** {{ generated_at }}
 
 ---
@@ -155,6 +266,7 @@ MD_TEMPLATE = Template(r"""# 📊 Документация базы данных
 - [📋 Таблицы](#таблицы)
 - [🔄 Материализованные представления](#материализованные-представления)
 - [👁️ Представления VIEW](#представления-view)
+- [📖 Словари](#словари)
 
 ---
 
@@ -162,15 +274,17 @@ MD_TEMPLATE = Template(r"""# 📊 Документация базы данных
 ## 📋 Таблицы
 
 {% if tables %}
-{% for db, name, engine, rows, bytes, modified, comment in tables %}
+{% for db, name, engine, rows, bytes, modified, comment, sorting_key, primary_key in tables %}
 ### `{{ name }}`
 
 | Параметр | Значение |
 |---|---|
 | Движок | `{{ engine }}` |
 | Строк | {{ rows }} |
-| Размер | {{ mb(bytes) }} MB |
-| Изменена | {{ modified }} |
+| Сортировка | `{{ sorting_key or '—' }}` |
+| Первичный ключ | `{{ primary_key or '—' }}` |
+| Размер | {{ format_size(bytes) }} |
+| Изменена (структура) | {{ modified }} |
 | Комментарий | {{ comment or '—' }} |
 
 #### Структура
@@ -191,12 +305,13 @@ MD_TEMPLATE = Template(r"""# 📊 Документация базы данных
 ## 🔄 Материализованные представления
 
 {% if mv %}
-{% for db, name, engine, comment in mv %}
+{% for db, name, engine, comment, target in mv %}
 ### `{{ name }}`
 
 | Параметр | Значение |
 |---|---|
 | Движок | `{{ engine }}` |
+| Целевая таблица | `{{ target or '—' }}` |
 | Комментарий | {{ comment or '—' }} |
 
 ---
@@ -220,6 +335,24 @@ MD_TEMPLATE = Template(r"""# 📊 Документация базы данных
 {% endfor %}
 {% else %}
 Представления отсутствуют.
+{% endif %}
+
+<a id="словари"></a>
+## 📖 Словари
+
+{% if dictionaries %}
+{% for db, name, comment, source_desc, source_table in dictionaries %}
+### `{{ name }}`
+
+| Параметр | Значение |
+|---|---|
+| Источник | {{ source_desc or '—' }} |
+| Комментарий | {{ comment or '—' }} |
+
+---
+{% endfor %}
+{% else %}
+Словари отсутствуют.
 {% endif %}
 """)
 
@@ -249,19 +382,25 @@ HTML_TEMPLATE = Template(r"""<!DOCTYPE html>
 <body>
     <div class="container">
         <h1>📊 Документация базы данных ClickHouse</h1>
-        <p class="meta"><strong>База данных:</strong> <code>{{ database }}</code><br><strong>Сгенерировано:</strong> {{ generated_at }}</p>
+        <p class="meta">
+            <strong>База данных:</strong> <code>{{ database }}</code><br>
+            <strong>Версия ClickHouse:</strong> <code>{{ clickhouse_version }}</code><br>
+            <strong>Сгенерировано:</strong> {{ generated_at }}
+        </p>
         <hr>
 
         <h2>📋 Таблицы</h2>
         {% if tables %}
-            {% for db, name, engine, rows, bytes, modified, comment in tables %}
+            {% for db, name, engine, rows, bytes, modified, comment, sorting_key, primary_key in tables %}
             <h3>{{ name }}</h3>
             <table>
                 <tr><th>Параметр</th><th>Значение</th></tr>
                 <tr><td>Движок</td><td><code>{{ engine }}</code></td></tr>
                 <tr><td>Строк</td><td>{{ rows }}</td></tr>
-                <tr><td>Размер</td><td>{{ mb(bytes) }} MB</td></tr>
-                <tr><td>Изменена</td><td>{{ modified }}</td></tr>
+                <tr><td>Сортировка</td><td><code>{{ sorting_key or '—' }}</code></td></tr>
+                <tr><td>Первичный ключ</td><td><code>{{ primary_key or '—' }}</code></td></tr>
+                <tr><td>Размер</td><td>{{ format_size(bytes) }}</td></tr>
+                <tr><td>Изменена (структура)</td><td>{{ modified }}</td></tr>
                 <tr><td>Комментарий</td><td>{{ comment or '—' }}</td></tr>
             </table>
 
@@ -279,11 +418,12 @@ HTML_TEMPLATE = Template(r"""<!DOCTYPE html>
 
         <h2>🔄 Материализованные представления</h2>
         {% if mv %}
-            {% for db, name, engine, comment in mv %}
+            {% for db, name, engine, comment, target in mv %}
             <h3>{{ name }}</h3>
             <table>
                 <tr><th>Параметр</th><th>Значение</th></tr>
                 <tr><td>Движок</td><td><code>{{ engine }}</code></td></tr>
+                <tr><td>Целевая таблица</td><td><code>{{ target or '—' }}</code></td></tr>
                 <tr><td>Комментарий</td><td>{{ comment or '—' }}</td></tr>
             </table>
             {% endfor %}
@@ -303,6 +443,20 @@ HTML_TEMPLATE = Template(r"""<!DOCTYPE html>
         {% else %}
             <p>Представления отсутствуют.</p>
         {% endif %}
+
+        <h2>📖 Словари</h2>
+        {% if dictionaries %}
+            {% for db, name, comment, source_desc, source_table in dictionaries %}
+            <h3>{{ name }}</h3>
+            <table>
+                <tr><th>Параметр</th><th>Значение</th></tr>
+                <tr><td>Источник</td><td>{{ source_desc or '—' }}</td></tr>
+                <tr><td>Комментарий</td><td>{{ comment or '—' }}</td></tr>
+            </table>
+            {% endfor %}
+        {% else %}
+            <p>Словари отсутствуют.</p>
+        {% endif %}
     </div>
 </body>
 </html>""")
@@ -314,11 +468,13 @@ if DOC_FORMAT == "md":
     md_content = MD_TEMPLATE.render(
         database=CLICKHOUSE_DATABASE,
         generated_at=generated_at,
+        clickhouse_version=clickhouse_version,
         tables=tables,
         columns=columns,
         mv=mv,
         views=views,
-        mb=mb
+        dictionaries=dictionaries,
+        format_size=format_size
     )
     
     output_file = OUTPUT_DIR / f"database_schema.{DOC_FORMAT}"
@@ -331,11 +487,13 @@ elif DOC_FORMAT == "html":
     html_content = HTML_TEMPLATE.render(
         database=CLICKHOUSE_DATABASE,
         generated_at=generated_at,
+        clickhouse_version=clickhouse_version,
         tables=tables,
         columns=columns,
         mv=mv,
         views=views,
-        mb=mb
+        dictionaries=dictionaries,
+        format_size=format_size
     )
     
     output_file = OUTPUT_DIR / f"database_schema.{DOC_FORMAT}"
