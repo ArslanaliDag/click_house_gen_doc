@@ -1,0 +1,16 @@
+# Публикация ER-диаграммы ClickHouse через GitLab Pages.
+# После успешного пайплайна URL смотреть в проекте: Deploy -> Pages.
+# URL: https://doc-88eb7b.pages.imbalanced.tech/
+# Тут в корне лежит файл ci 
+# https://git.imbalanced.tech/mcdis-russpro/russpro-vitrina/doc/-/blob/main/.gitlab-ci.yml?ref_type=heads
+pages:
+  stage: deploy
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+  script:
+    - mkdir -p public
+    - cp "Документация по ClickHouse/er_diagram.html" public/index.html
+    - cp -r "Документация по ClickHouse/js" public/js
+  artifacts:
+    paths:
+      - public

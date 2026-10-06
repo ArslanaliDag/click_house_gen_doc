@@ -45,6 +45,9 @@ CLICKHOUSE_USER = os.getenv("CLICKHOUSE_USER")
 CLICKHOUSE_PASSWORD = os.getenv("CLICKHOUSE_PASSWORD")
 CLICKHOUSE_DATABASE = os.getenv("CLICKHOUSE_DATABASE")
 
+# Ссылка на интерактивную ER-диаграмму (GitLab Pages) в документации.
+ER_PAGES_URL = os.getenv("ER_PAGES_URL")
+
 OUTPUT_DIR = Path(os.getenv("DOC_OUTPUT_DIR", "docs"))
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -267,7 +270,7 @@ MD_TEMPLATE = Template(r"""# 📊 Документация по объектам
 - [🔄 Материализованные представления](#материализованные-представления)
 - [👁️ Представления VIEW](#представления-view)
 - [📖 Словари](#словари)
-- [🕸️ ER-диаграмма:](er_diagram.md)
+- 🕸️ ER-диаграмма: [Markdown](er_diagram.md) · [Интерактивная HTML]({{ er_pages_url }})
 
 ---
 
@@ -386,7 +389,8 @@ HTML_TEMPLATE = Template(r"""<!DOCTYPE html>
         <p class="meta">
             <strong>База данных:</strong> <code>{{ database }}</code><br>
             <strong>Версия ClickHouse:</strong> <code>{{ clickhouse_version }}</code><br>
-            <strong>Сгенерировано:</strong> {{ generated_at }}
+            <strong>Сгенерировано:</strong> {{ generated_at }}<br>
+            <strong>ER-диаграмма:</strong> <a href="er_diagram.md">Markdown</a> · <a href="{{ er_pages_url }}">Интерактивная HTML</a>
         </p>
         <hr>
 
@@ -470,6 +474,7 @@ if DOC_FORMAT == "md":
         database=CLICKHOUSE_DATABASE,
         generated_at=generated_at,
         clickhouse_version=clickhouse_version,
+        er_pages_url=ER_PAGES_URL,
         tables=tables,
         columns=columns,
         mv=mv,
@@ -489,6 +494,7 @@ elif DOC_FORMAT == "html":
         database=CLICKHOUSE_DATABASE,
         generated_at=generated_at,
         clickhouse_version=clickhouse_version,
+        er_pages_url=ER_PAGES_URL,
         tables=tables,
         columns=columns,
         mv=mv,
