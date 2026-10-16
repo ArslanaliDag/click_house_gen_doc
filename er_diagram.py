@@ -401,7 +401,7 @@ generated_at = datetime.now().strftime("%d-%m-%Y")
 md_content = "\n".join([
     "# 🕸️ ER-диаграмма БД",
     "",
-    "[← К основной документации](database_schema.md)",
+    "[← К содержанию](database_schema.md)",
     "",
     "**Контур:** `Stage`",
     "",

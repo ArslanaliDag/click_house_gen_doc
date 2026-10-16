@@ -253,7 +253,7 @@ for db, name, comment, source in dict_raw:
 # ============================================================
 # Markdown
 # ============================================================
-MD_TEMPLATE = Template(r"""# 📊 Документация по объектам БД
+MAIN_MD_TEMPLATE = Template(r"""# 📊 Документация по объектам БД
 **СУБД:** `ClickHouse (v.{{ clickhouse_version }})`
 
 **Контур:** `Stage`
@@ -266,16 +266,16 @@ MD_TEMPLATE = Template(r"""# 📊 Документация по объектам
 
 ## 📑 Содержание
 
-- [📋 Таблицы](#таблицы)
-- [🔄 Материализованные представления](#материализованные-представления)
-- [👁️ Представления VIEW](#представления-view)
-- [📖 Словари](#словари)
-- 🕸️ ER-диаграмма: [Markdown](er_diagram.md) · [Интерактивная HTML]({{ er_pages_url }})
+- [📋 Таблицы](objects/tables.md)
+- [🔄 Материализованные представления](objects/materialized_views.md)
+- [👁️ Представления VIEW](objects/views.md)
+- [📖 Словари](objects/dictionaries.md)
+- 🕸️ ER-диаграмма: [Markdown](er_diagram.md) · [Интерактивная HTML]({{ er_pages_url or 'er_diagram.html' }})
+""")
 
----
+TABLES_MD_TEMPLATE = Template(r"""# 📋 Таблицы
 
-<a id="таблицы"></a>
-## 📋 Таблицы
+[← К содержанию](../database_schema.md)
 
 {% if tables %}
 {% for db, name, engine, rows, bytes, modified, comment, sorting_key, primary_key in tables %}
@@ -304,9 +304,12 @@ MD_TEMPLATE = Template(r"""# 📊 Документация по объектам
 {% else %}
 Таблицы отсутствуют.
 {% endif %}
+""")
 
-<a id="материализованные-представления"></a>
-## 🔄 Материализованные представления
+
+MV_MD_TEMPLATE = Template(r"""# 🔄 Материализованные представления
+
+[← К содержанию](../database_schema.md)
 
 {% if mv %}
 {% for db, name, engine, comment, target in mv %}
@@ -323,9 +326,12 @@ MD_TEMPLATE = Template(r"""# 📊 Документация по объектам
 {% else %}
 Материализованные представления отсутствуют.
 {% endif %}
+""")
 
-<a id="представления-view"></a>
-## 👁️ Представления VIEW
+
+VIEWS_MD_TEMPLATE = Template(r"""# 👁️ Представления VIEW
+
+[← К содержанию](../database_schema.md)
 
 {% if views %}
 {% for db, name, comment in views %}
@@ -340,9 +346,12 @@ MD_TEMPLATE = Template(r"""# 📊 Документация по объектам
 {% else %}
 Представления отсутствуют.
 {% endif %}
+""")
 
-<a id="словари"></a>
-## 📖 Словари
+
+DICTS_MD_TEMPLATE = Template(r"""# 📖 Словари
+
+[← К содержанию](../database_schema.md)
 
 {% if dictionaries %}
 {% for db, name, comment, source_desc, source_table in dictionaries %}
@@ -470,24 +479,38 @@ HTML_TEMPLATE = Template(r"""<!DOCTYPE html>
 # Генерируем документацию
 # ============================================================
 if DOC_FORMAT == "md":
-    md_content = MD_TEMPLATE.render(
-        database=CLICKHOUSE_DATABASE,
-        generated_at=generated_at,
-        clickhouse_version=clickhouse_version,
-        er_pages_url=ER_PAGES_URL,
-        tables=tables,
-        columns=columns,
-        mv=mv,
-        views=views,
-        dictionaries=dictionaries,
-        format_size=format_size
-    )
-    
-    output_file = OUTPUT_DIR / f"database_schema.{DOC_FORMAT}"
-    with open(output_file, "w", encoding="utf-8") as f:
-        f.write(md_content)
-    
-    print(f"✅ Документация сгенерирована: {output_file}")
+    objects_dir = OUTPUT_DIR / "objects"
+    objects_dir.mkdir(parents=True, exist_ok=True)
+
+    common = {
+        "database": CLICKHOUSE_DATABASE,
+        "generated_at": generated_at,
+        "clickhouse_version": clickhouse_version,
+        "er_pages_url": ER_PAGES_URL,
+        "tables": tables,
+        "columns": columns,
+        "mv": mv,
+        "views": views,
+        "dictionaries": dictionaries,
+        "format_size": format_size,
+    }
+
+    # Главный файл с оглавлением
+    main_content = MAIN_MD_TEMPLATE.render(**common)
+    (OUTPUT_DIR / "database_schema.md").write_text(main_content, encoding="utf-8")
+
+    # Отдельные файлы по типам объектов
+    objects = {
+        "tables.md": TABLES_MD_TEMPLATE,
+        "materialized_views.md": MV_MD_TEMPLATE,
+        "views.md": VIEWS_MD_TEMPLATE,
+        "dictionaries.md": DICTS_MD_TEMPLATE,
+    }
+    for filename, tpl in objects.items():
+        (objects_dir / filename).write_text(tpl.render(**common), encoding="utf-8")
+
+    print(f"✅ Документация сгенерирована: {OUTPUT_DIR / 'database_schema.md'}")
+    print(f"   Объекты: {objects_dir}")
 
 elif DOC_FORMAT == "html":
     html_content = HTML_TEMPLATE.render(
