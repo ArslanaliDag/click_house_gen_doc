@@ -271,6 +271,7 @@ MAIN_MD_TEMPLATE = Template(r"""# 📊 Документация по объек�
 - [👁️ Представления VIEW](objects/views.md)
 - [📖 Словари](objects/dictionaries.md)
 - 🕸️ ER-диаграмма: [Markdown](er_diagram.md) · [Интерактивная HTML]({{ er_pages_url or 'er_diagram.html' }})
+- [📈 История обновлений версий БД](updates.md)
 """)
 
 TABLES_MD_TEMPLATE = Template(r"""# 📋 Таблицы
