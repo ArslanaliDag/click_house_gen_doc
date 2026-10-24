@@ -9,7 +9,7 @@ pages:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
   script:
     - mkdir -p public
-    - cp "Документация по ClickHouse/er_diagram.html" public/index.html
+    - cp "Документация по ClickHouse/diagram/er_diagram.html" public/index.html
     - cp -r "Документация по ClickHouse/js" public/js
   artifacts:
     paths:

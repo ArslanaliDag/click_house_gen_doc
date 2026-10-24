@@ -201,8 +201,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ER-диаграмма — __DB__ · Сгенерировано __GENERATED_AT__</title>
-<script src="js/mermaid.min.js"></script>
-<script src="js/svg-pan-zoom.min.js"></script>
+<script src="../js/mermaid.min.js"></script>
+<script src="../js/svg-pan-zoom.min.js"></script>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   html, body { width:100%; height:100%; overflow:hidden; background:#1e1e2e; font-family:Arial,sans-serif; }
@@ -401,7 +401,7 @@ generated_at = datetime.now().strftime("%d-%m-%Y")
 md_content = "\n".join([
     "# 🕸️ ER-диаграмма БД",
     "",
-    "[← К содержанию](database_schema.md)",
+    "[← К содержанию](../database_schema.md)",
     "",
     "**Контур:** `Stage`",
     "",
