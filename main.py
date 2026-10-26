@@ -271,6 +271,8 @@ MAIN_MD_TEMPLATE = Template(r"""# 📊 Документация по объек�
 - [👁️ Представления VIEW](objects/views.md)
 - [📖 Словари](objects/dictionaries.md)
 - 🕸️ ER-диаграмма: [Markdown](diagram/er_diagram.md) · [Интерактивная HTML]({{ er_pages_url or 'diagram/er_diagram.html' }})
+- [🧩 Работа с данными из СИР](../Работа%20с%20данными%20СИР%20в%20ClickHouse/Работа%20с%20данными%20СИР%20в%20ClickHouse.md)
+- [🧩 Работа с данными из АРМС](../Работа%20с%20данными%20АРМС%20в%20ClickHouse/Работа%20с%20данными%20АРМС%20в%20ClickHouse.md)
 - [📈 История обновлений версий БД](release/updates.md)
 """)
 
