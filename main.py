@@ -1,10 +1,9 @@
 import os
 import re
 from pathlib import Path
-from datetime import datetime
-
 import clickhouse_connect
 from jinja2 import Template
+from datetime import datetime
 
 
 def load_env_file(path=".env"):
@@ -253,7 +252,7 @@ for db, name, comment, source in dict_raw:
 # ============================================================
 # Markdown
 # ============================================================
-MAIN_MD_TEMPLATE = Template(r"""# 📊 Документация по объектам БД
+MAIN_MD_TEMPLATE = Template(r"""# 📊 Документация по БД ClickHouse
 **СУБД:** `ClickHouse (v.{{ clickhouse_version }})`
 
 **Контур:** `Stage`
@@ -268,12 +267,13 @@ MAIN_MD_TEMPLATE = Template(r"""# 📊 Документация по объек�
 
 - [📋 Таблицы](objects/tables.md)
 - [🔄 Материализованные представления](objects/materialized_views.md)
-- [👁️ Представления VIEW](objects/views.md)
+- [👁️ Представления](objects/views.md)
 - [📖 Словари](objects/dictionaries.md)
-- 🕸️ ER-диаграмма: [Markdown](diagram/er_diagram.md) · [Интерактивная HTML]({{ er_pages_url or 'diagram/er_diagram.html' }})
-- [🧩 Работа с данными из СИР](../Работа%20с%20данными%20СИР%20в%20ClickHouse/Работа%20с%20данными%20СИР%20в%20ClickHouse.md)
-- [🧩 Работа с данными из АРМС](../Работа%20с%20данными%20АРМС%20в%20ClickHouse/Работа%20с%20данными%20АРМС%20в%20ClickHouse.md)
-- [📈 История обновлений версий БД](release/updates.md)
+- 🕸️ ER-диаграмма: [Интерактивная]({{ er_pages_url or 'diagram/er_diagram.html' }}) · [Markdown](diagram/er_diagram.md)
+- [🧩 Работа с данными СИР](Работа%20с%20данными%20СИР%20в%20ClickHouse/Работа%20с%20данными%20СИР%20в%20ClickHouse.md)
+- [🧩 Работа с данными АРМС](Работа%20с%20данными%20АРМС%20в%20ClickHouse/Работа%20с%20данными%20АРМС%20в%20ClickHouse.md)
+- 👔 Регламент работы с БД: [ClickHouse](Регламент%20работы%20с%20ClickHouse/Регламент%20работы%20с%20ClickHouse.md) · [Общий](https://git.imbalanced.tech/government/agreements-policies-regulations/-/blob/main/guidelines/%D0%A0%D0%B5%D0%B3%D0%BB%D0%B0%D0%BC%D0%B5%D0%BD%D1%82_%D1%80%D0%B0%D0%B7%D1%80%D0%B0%D0%B1%D0%BE%D1%82%D0%BA%D0%B8_%D0%91%D0%94.md?ref_type=heads)
+- [📈 История обновлений](release/updates.md)
 """)
 
 TABLES_MD_TEMPLATE = Template(r"""# 📋 Таблицы
