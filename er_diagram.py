@@ -8,13 +8,13 @@
 эвристически по именам колонок и могут быть неточными/неполными.
 """
 
-import html
-import json
 import os
 import re
-from collections import defaultdict
-from datetime import datetime
+import html
+import json
 from pathlib import Path
+from datetime import datetime
+from collections import defaultdict
 
 # ------------------------------------------------------------
 # Загрузка .env

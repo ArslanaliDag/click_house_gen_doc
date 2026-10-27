@@ -1,9 +1,12 @@
 import os
 import re
+import sys
+import subprocess
 from pathlib import Path
+from datetime import datetime
+
 import clickhouse_connect
 from jinja2 import Template
-from datetime import datetime
 
 
 def load_env_file(path=".env"):
@@ -46,6 +49,9 @@ CLICKHOUSE_DATABASE = os.getenv("CLICKHOUSE_DATABASE")
 
 # Ссылка на интерактивную ER-диаграмму (GitLab Pages) в документации.
 ER_PAGES_URL = os.getenv("ER_PAGES_URL")
+
+# Ссылка на FAQ-страницу (GitLab Pages) в документации.
+ER_FAQ_URL = os.getenv("ER_FAQ_URL")
 
 OUTPUT_DIR = Path(os.getenv("DOC_OUTPUT_DIR", "docs"))
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -273,7 +279,8 @@ MAIN_MD_TEMPLATE = Template(r"""# 📊 Документация по БД ClickH
 - [🧩 Работа с данными СИР](Работа%20с%20данными%20СИР%20в%20ClickHouse/Работа%20с%20данными%20СИР%20в%20ClickHouse.md)
 - [🧩 Работа с данными АРМС](Работа%20с%20данными%20АРМС%20в%20ClickHouse/Работа%20с%20данными%20АРМС%20в%20ClickHouse.md)
 - 👔 Регламент работы с БД: [ClickHouse](Регламент%20работы%20с%20ClickHouse/Регламент%20работы%20с%20ClickHouse.md) · [Общий](https://git.imbalanced.tech/government/agreements-policies-regulations/-/blob/main/guidelines/%D0%A0%D0%B5%D0%B3%D0%BB%D0%B0%D0%BC%D0%B5%D0%BD%D1%82_%D1%80%D0%B0%D0%B7%D1%80%D0%B0%D0%B1%D0%BE%D1%82%D0%BA%D0%B8_%D0%91%D0%94.md?ref_type=heads)
-- [📈 История обновлений](release/updates.md)
+- [📈 История обновлений](releases/updates.md)
+- [📝 FAQ]({{ er_faq_url or 'faq/faq.html' }})
 """)
 
 TABLES_MD_TEMPLATE = Template(r"""# 📋 Таблицы
@@ -490,6 +497,7 @@ if DOC_FORMAT == "md":
         "generated_at": generated_at,
         "clickhouse_version": clickhouse_version,
         "er_pages_url": ER_PAGES_URL,
+        "er_faq_url": ER_FAQ_URL,
         "tables": tables,
         "columns": columns,
         "mv": mv,
@@ -521,6 +529,7 @@ elif DOC_FORMAT == "html":
         generated_at=generated_at,
         clickhouse_version=clickhouse_version,
         er_pages_url=ER_PAGES_URL,
+        er_faq_url=ER_FAQ_URL,
         tables=tables,
         columns=columns,
         mv=mv,
@@ -534,3 +543,18 @@ elif DOC_FORMAT == "html":
         f.write(html_content)
     
     print(f"✅ Документация сгенерирована: {output_file}")
+
+
+# ============================================================
+# Генерация ER-диаграммы и FAQ (объединённый запуск)
+# ============================================================
+_script_dir = Path(__file__).resolve().parent
+
+for _script in ("er_diagram.py", "faq.py"):
+    print(f"\n▶ Запуск: {_script}")
+    _result = subprocess.run(
+        [sys.executable, str(_script_dir / _script)],
+        cwd=str(_script_dir),
+    )
+    if _result.returncode != 0:
+        print(f"⚠️ {_script} завершился с кодом {_result.returncode}")

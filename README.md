@@ -44,6 +44,9 @@ CLICKHOUSE_PASSWORD=your_password
 CLICKHOUSE_DATABASE=your_database
 DOC_FORMAT=md
 DOC_OUTPUT_DIR=docs
+
+# Ссылка на интерактивную ER-диаграмму (GitLab Pages), необязательно
+ER_PAGES_URL=
 ```
 
 ## 📖 Использование
@@ -56,7 +59,10 @@ python main.py
 python main.py md
 ```
 
-Результат: `docs/database_schema.md`
+Результат:
+- `docs/database_schema.md` — главный файл с оглавлением
+- `docs/objects/*.md` — таблицы, материализованные представления, VIEW, словари
+- `docs/updates.md` — история обновлений версии ClickHouse
 
 ### Генерирование документации в HTML
 
@@ -83,13 +89,24 @@ python main.py html
 
 ```
 click_house_gen_doc/
-├── main.py              # Основной скрипт
+├── main.py              # Основной скрипт (документация БД)
+├── er_diagram.py        # Генератор ER-диаграммы
+├── faq.py               # Генератор FAQ-страницы
+├── faq.txt              # Вопросы и ответы для FAQ
 ├── req.txt              # Зависимости
 ├── README.md            # Этот файл
 ├── .env                 # Конфигурация (не отслеживается в git)
 ├── docs/                # Выходные документы
 │   ├── database_schema.md
-│   └── database_schema.html
+│   ├── database_schema.html
+│   ├── er_diagram.md
+│   ├── er_diagram.html
+│   ├── updates.md       # История обновлений ClickHouse
+│   └── objects/         # Отдельные файлы по объектам
+│       ├── tables.md
+│       ├── materialized_views.md
+│       ├── views.md
+│       └── dictionaries.md
 └── temp/                # Временные файлы
 ```
 
@@ -107,4 +124,46 @@ click_house_gen_doc/
 
 ### VIEW представления
 - Комментарии
+
+---
+
+## 🕸️ ER-диаграмма
+
+Скрипт `er_diagram.py` строит ER-диаграмму базы данных: подключается к ClickHouse,
+собирает таблицы и колонки, восстанавливает связи между таблицами по именам
+FK-колонок (`*_id`, `*_uuid`) и генерирует диаграмму.
+
+```bash
+python er_diagram.py
+```
+
+Результат:
+- `docs/er_diagram.md` — Mermaid-диаграмма (рендерится нативно в GitLab/GitHub)
+- `docs/er_diagram.html` — интерактивная версия (зум, панорама, поиск, подсветка связей по клику)
+
+> В ClickHouse нет внешних ключей, поэтому связи восстанавливаются эвристически
+> по именам колонок и могут быть неполными/неточными.
+
+---
+
+## ❓ FAQ
+
+Скрипт `faq.py` генерирует интерактивную HTML-страницу с часто задаваемыми
+вопросами из файла `faq.txt`.
+
+```bash
+python faq.py
+```
+
+Результат: `faq.html` (аккордеон + поиск по вопросам).
+
+Формат `faq.txt`:
+
+```text
+Q: Вопрос?
+A: Ответ (может быть многострочным).
+```
+
+- `Q:` — начало вопроса;
+- `A:` — ответ (маркер необязателен, всё до следующего `Q:` считается ответом).
 

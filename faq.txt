@@ -1,0 +1,218 @@
+Q: Как подключиться к ClickHouse из командной строки?
+A: Используйте клиент clickhouse-client:
+clickhouse-client --host <host> --port 9000 --user <user> --password
+
+Q: Какой движок таблиц выбрать для обычной таблицы?
+A: Для большинства задач подходит `MergeTree`.
+Если нужна дедупликация при вставке — `ReplacingMergeTree`,
+для агрегатов — `AggregatingMergeTree`.
+
+Q: Как посмотреть список таблиц в базе?
+A: ```sql 
+SELECT name FROM system.tables WHERE database = '<имя_базы>';
+```
+
+Q: Как посмотреть версию базы?
+A: ```sql
+SELECT version();
+```
+
+Q: Как посмотреть список пользователей?
+A: ```sql
+SELECT
+    name          AS user_name,
+    auth_type     AS auth_method,
+    default_database,
+    default_roles_list,
+    host_ip,
+    host_names,
+    valid_until
+FROM system.users
+ORDER BY name;
+```
+
+Q: Как посмотреть права пользователей?
+A: ```sql
+SELECT
+    access_type,
+    database,
+    table,
+    grant_option
+FROM system.grants
+ORDER BY database, table, access_type;
+```
+
+Q: Как посмотреть список баз данных?
+A: ```sql
+SHOW DATABASES;
+-- или через системную таблицу:
+SELECT name FROM system.databases;
+```
+
+Q: Как посмотреть структуру таблицы (поля и типы)?
+A: ```sql
+DESCRIBE TABLE <таблица>;
+-- сокращённо:
+DESC <таблица>;
+```
+
+Q: Как получить DDL (запрос создания) таблицы?
+A: ```sql
+SHOW CREATE TABLE <таблица>;
+```
+
+Q: Как посмотреть количество строк и размер таблицы?
+A: ```sql
+SELECT name, total_rows, formatReadableSize(total_bytes) AS size
+FROM system.tables
+WHERE database = '<имя_базы>';
+```
+
+Q: Как удалить все данные из таблицы?
+A: ```sql
+TRUNCATE TABLE <таблица>;
+```
+
+Q: Как найти самые большие таблицы в базе?
+A: ```sql
+SELECT name, formatReadableSize(total_bytes) AS size
+FROM system.tables
+WHERE database = '<имя_базы>'
+ORDER BY total_bytes DESC;
+```
+
+Q: Как посмотреть выполняющиеся сейчас запросы?
+A: ```sql
+SELECT query_id, user, elapsed, query
+FROM system.processes;
+```
+
+Q: Как остановить выполняющийся запрос?
+A: ```sql
+KILL QUERY WHERE query_id = '<query_id>';
+```
+
+Q: Как создать пользователя?
+A: ```sql
+CREATE USER <имя> IDENTIFIED WITH sha256_password BY '<пароль>';
+```
+
+Q: Какую версию базы ставить?
+A: Обычно ставим __lts__ версию последнего релиза.
+
+Q: Как выдать права пользователю на базу?
+A: ```sql
+GRANT SELECT ON <база>.* TO <пользователь>;
+-- все права:
+GRANT ALL ON <база>.* TO <пользователь>;
+```
+
+Q: Как посмотреть партиции таблицы?
+A: ```sql
+SELECT partition, count() AS parts, sum(rows) AS rows
+FROM system.parts
+WHERE database = '<имя_базы>' AND table = '<таблица>' AND active
+GROUP BY partition;
+```
+
+Q: Как объединить партиции (оптимизировать таблицу)?
+A: ```sql
+OPTIMIZE TABLE <таблица> FINAL;
+```
+
+Q: Как посмотреть логи сервера ClickHouse?
+A: Файлы логов по умолчанию:
+- `/var/log/clickhouse-server/clickhouse-server.log` — основной лог;
+- `/var/log/clickhouse-server/clickhouse-server.err.log` — ошибки.
+
+В Docker — `docker logs <имя_контейнера>`.
+## Системные таблицы-логи (что где хранится)
+
+Все три — реальные таблицы на движке MergeTree, данные физически лежат на диске
+в `/var/lib/clickhouse/store/` и **занимают место**. Включаются/настраиваются секциями
+`<query_log>`, `<query_thread_log>`, `<text_log>` в `config.xml`
+(периодичность сброса `flush_interval_milliseconds`, TTL, партиционирование).
+
+### system.query_log — журнал запросов
+По одной записи на каждый выполненный запрос (SELECT, INSERT, CREATE, ...).
+Ключевые колонки:
+- `query` — полный текст запроса (сюда и попадают пароли, если не маскируются);
+- `user`, `query_id`, `type` (QueryStart / QueryFinish / Exception...), `event_time`;
+- `query_duration_ms` — длительность;
+- `read_rows/read_bytes`, `written_rows/written_bytes`, `result_rows` — объёмы;
+- `memory_usage`, `exception`, `exception_code`, `databases/tables/columns`.
+
+Назначение: аудит запросов, поиск медленных/падающих запросов, мониторинг.
+
+### system.query_thread_log — потоки запросов
+Детализация по потокам (threads), выполнявшим запрос; для одного запроса — много строк.
+Ключевые колонки: `query_id`, `thread_name/thread_id`, `query_duration_ms`,
+`read_/written_rows/bytes`, `memory_usage`, `peak_memory_usage`, `ProfileEvents`.
+
+Назначение: где именно потрачены CPU/память, узкие места параллельного выполнения.
+
+### system.text_log — текстовые логи сервера
+Дубль того, что пишется в файлы `/var/log/clickhouse-server/clickhouse-server.log`.
+Ключевые колонки: `level` (Trace/Debug/Info/Warning/Error/Fatal), `logger_name`,
+`message`, `thread_name`, `query_id`, `event_time`.
+
+Назначение: поиск внутренних ошибок сервера, отладка.
+
+Q: Как сделать бэкап таблицы?
+A: ```sql
+BACKUP TABLE <таблица> TO Disk('backups', 'file.zip');
+```
+Полный бэкап сервера — утилитой `clickhouse-backup`.
+
+Q: Как объяснить план выполнения запроса?
+A: ```sql
+EXPLAIN SELECT ...;
+```
+
+Q: Как сделать бэкап всей базы данных?
+A: ```sql
+BACKUP DATABASE <имя_базы> TO Disk('backups', 'backup.zip');
+```
+Диск `backups` настроен в ClickHouse по умолчанию (папка `/var/lib/clickhouse/backups`).
+
+Для полного бэкапа сервера (все базы) удобнее утилита `clickhouse-backup`.
+
+Q: Как восстановить базу данных из бэкапа?
+A: ```sql
+RESTORE DATABASE <имя_базы> FROM Disk('backups', 'backup.zip');
+```
+Если база уже существует, сначала удалите её (`DROP DATABASE <имя_базы>`) либо используйте `RESTORE ... SETTINGS allow_non_empty_tables=true`.
+
+Q: Откуда поступают данные в базу?
+A: Данные поступают из двух источников: **АРМС** и **СИР**. Данные приходят из Kafka через интегратор **DbGate**.
+
+Q: Что такое «Чебурашка»?
+A: «Чебурашка» — это внутренний термин проекта для конкретной ситуации в данных наружной рекламы. Объясню по уровням.
+
+### В доменной модели (что это физически)
+
+В проекте есть три сущности:
+
+- **Конструкция** (`places`) — физическая рекламная конструкция (щит, билборд, панель на стене и т.п.);
+- **Поверхность** (`sale_units`) — рекламная сторона/грань, которая продаётся как рекламное место (то, что видят и где крутят рекламу);
+- **Связь** (`sale_unit_places`) — таблица-мост «поверхность ↔ конструкция».
+
+Обычно одна поверхность = одна конструкция (например, одна сторона билборда).
+
+«Чебурашка» — это случай, когда одна поверхность связана сразу с несколькими конструкциями. То есть одна продаваемая рекламная сторона физически «размазана» по нескольким конструкциям.
+
+### Почему так называется
+
+По аналогии с Чебурашкой — персонажем с большими ушами: одна «голова» (поверхность) с торчащими в стороны «ушами» (несколько прикреплённых конструкций). Это жаргонное, но устоявшееся в команде название.
+
+### Как это выглядит в данных
+
+Связь «многие ко многим» законна и нормальна. Конкретный пример из `cheburashkas.md`: поверхность `id = dea1ec14-e758-4ab7-bf53-aba6f6fa5c76` даёт 11 строк в одном `month_start` — то есть к ней привязано 11 конструкций.
+
+Примеры из реальных данных (номер основной конструкции + все номера через запятую):
+
+| gid_ru | основная конструкция | все конструкции «чебурашки» |
+|---|---|---|
+| BYGOBB00010В | 10 | 10, 11, 12, 13 |
+| BYMNBB01907А | 1907 | 1905, 1906, 1907 |
+| BYMNBB02533Б4 | 2533 | 4, 48, 50, 51, 53, 2533 |
