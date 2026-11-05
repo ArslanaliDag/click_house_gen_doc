@@ -265,22 +265,27 @@ MAIN_MD_TEMPLATE = Template(r"""# 📊 Документация по БД ClickH
 
 **БД:** `{{ database }}`  
 
-**Сгенерировано:** {{ generated_at }}
+**Дата:** {{ generated_at }}
 
 ---
 
 ## 📑 Содержание
 
-- [📋 Таблицы](objects/tables.md)
-- [🔄 Материализованные представления](objects/materialized_views.md)
-- [👁️ Представления](objects/views.md)
-- [📖 Словари](objects/dictionaries.md)
+- [📋 Таблицы](objects/tables.md) *({{ tables|length }})*
+- [🔄 Материализованные представления](objects/materialized_views.md) *({{ mv|length }})*
+- [👁️ Представления](objects/views.md) *({{ views|length }})*
+- [📖 Словари](objects/dictionaries.md) *({{ dictionaries|length }})*
+- [🧩 Миграции](migrations/migrations.md)
 - 🕸️ ER-диаграмма: [Интерактивная]({{ er_pages_url or 'diagram/er_diagram.html' }}) · [Markdown](diagram/er_diagram.md)
-- [🧩 Работа с данными СИР](Работа%20с%20данными%20СИР%20в%20ClickHouse/Работа%20с%20данными%20СИР%20в%20ClickHouse.md)
-- [🧩 Работа с данными АРМС](Работа%20с%20данными%20АРМС%20в%20ClickHouse/Работа%20с%20данными%20АРМС%20в%20ClickHouse.md)
+- [⚙️ Работа с данными СИР](Работа%20с%20данными%20СИР%20в%20ClickHouse/Работа%20с%20данными%20СИР%20в%20ClickHouse.md)
+- [⚙️ Работа с данными АРМС](Работа%20с%20данными%20АРМС%20в%20ClickHouse/Работа%20с%20данными%20АРМС%20в%20ClickHouse.md)
 - 👔 Регламент работы с БД: [ClickHouse](Регламент%20работы%20с%20ClickHouse/Регламент%20работы%20с%20ClickHouse.md) · [Общий](https://git.imbalanced.tech/government/agreements-policies-regulations/-/blob/main/guidelines/%D0%A0%D0%B5%D0%B3%D0%BB%D0%B0%D0%BC%D0%B5%D0%BD%D1%82_%D1%80%D0%B0%D0%B7%D1%80%D0%B0%D0%B1%D0%BE%D1%82%D0%BA%D0%B8_%D0%91%D0%94.md?ref_type=heads)
 - [📈 История обновлений](releases/updates.md)
 - [📝 FAQ]({{ er_faq_url or 'faq/faq.html' }})
+
+---
+
+> **Примечание:** Каждый день примерно в час ночи сервис `DbGate` запускает оптимизацию (`OPTIMIZE TABLE`) всех таблиц в ClickHouse. Это способствует повышению производительнности базы.
 """)
 
 TABLES_MD_TEMPLATE = Template(r"""# 📋 Таблицы
@@ -408,7 +413,7 @@ HTML_TEMPLATE = Template(r"""<!DOCTYPE html>
         <p class="meta">
             <strong>База данных:</strong> <code>{{ database }}</code><br>
             <strong>Версия ClickHouse:</strong> <code>{{ clickhouse_version }}</code><br>
-            <strong>Сгенерировано:</strong> {{ generated_at }}<br>
+            <strong>Дата:</strong> {{ generated_at }}<br>
             <strong>ER-диаграмма:</strong> <a href="er_diagram.md">Markdown</a> · <a href="{{ er_pages_url }}">Интерактивная HTML</a>
         </p>
         <hr>

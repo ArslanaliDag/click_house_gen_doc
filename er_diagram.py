@@ -200,7 +200,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ER-диаграмма — __DB__ · Сгенерировано __GENERATED_AT__</title>
+<title>ER-диаграмма — __DB__ · Дата __GENERATED_AT__</title>
 <script src="../js/mermaid.min.js"></script>
 <script src="../js/svg-pan-zoom.min.js"></script>
 <style>
@@ -238,7 +238,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <button onclick="toggleFullscreen()" title="Во весь экран">⛶</button>
 </div>
 <div class="hint">Клик по таблице — показать её связи · Клик по линии — две таблицы · Пустое место — сброс</div>
-<div class="meta">Сгенерировано: __GENERATED_AT__</div>
+<div class="meta">Дата: __GENERATED_AT__</div>
 <div id="container">
   <pre class="mermaid">__MERMAID_SOURCE__</pre>
 </div>
@@ -407,7 +407,7 @@ md_content = "\n".join([
     "",
     "**БД:** `%s`" % DB,
     "",
-    "**Сгенерировано:** %s" % generated_at,
+    "**Дата:** %s" % generated_at,
     "",
     "> Связи восстановлены эвристически по именам колонок (`*_id`, `*_uuid`).",
     "> В ClickHouse нет внешних ключей, поэтому диаграмма может быть неполной.",
