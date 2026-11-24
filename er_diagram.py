@@ -45,11 +45,26 @@ client = clickhouse_connect.get_client(
 tables = client.query(
     "SELECT name, engine FROM system.tables "
     "WHERE database = %(db)s AND engine NOT IN ('View','MaterializedView','Dictionary') "
+    "AND is_temporary = 0 "
     "ORDER BY name",
     parameters={"db": DB},
 ).result_rows
 
-table_names = [t[0] for t in tables]
+
+def is_valid_entity_name(name):
+    """Проверяет, что имя таблицы допустимо как имя сущности Mermaid erDiagram.
+
+    Mermaid принимает имена вида ``[A-Za-z_][A-Za-z0-9_-]*``. ClickHouse создаёт
+    служебные таблицы с именами вида ``.tmp.inner_id.<uuid>`` / ``.inner_id.<uuid>``
+    (внутренние таблицы материализованных представлений и временные таблицы).
+    Точки и ведущая точка в таких именах ломают синтаксис диаграммы, поэтому
+    такие таблицы исключаем (в дополнение к фильтрам ``is_temporary = 0``
+    и ``position(name, '.') = 0`` на уровне SQL).
+    """
+    return bool(re.match(r"^[A-Za-z_][A-Za-z0-9_\-]*$", name))
+
+
+table_names = [t[0] for t in tables if is_valid_entity_name(t[0])]
 
 # ------------------------------------------------------------
 # Колонки (только верхнего уровня, без вложенных под-колонок Nested)
@@ -58,7 +73,8 @@ cols = client.query(
     "SELECT table, name, type FROM system.columns "
     "WHERE database = %(db)s "
     "AND table IN (SELECT name FROM system.tables WHERE database = %(db)s "
-    "              AND engine NOT IN ('View','MaterializedView','Dictionary')) "
+    "              AND engine NOT IN ('View','MaterializedView','Dictionary') "
+    "              AND is_temporary = 0) "
     "AND position(name, '.') = 0 "
     "ORDER BY table, position",
     parameters={"db": DB},

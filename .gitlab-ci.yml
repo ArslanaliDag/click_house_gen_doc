@@ -1,8 +1,6 @@
-# Публикация ER-диаграммы ClickHouse через GitLab Pages.
+# Публикация ER-диаграммы ClickHouse и FAQ через GitLab Pages.
 # После успешного пайплайна URL смотреть в проекте: Deploy -> Pages.
-# URL: https://doc-88eb7b.pages.imbalanced.tech/
-# Тут в корне лежит файл ci 
-# https://git.imbalanced.tech/mcdis-russpro/russpro-vitrina/doc/-/blob/main/.gitlab-ci.yml?ref_type=heads
+# URL: https://doc-88eb7b.pages.imbalanced.tech/ (ER-диаграмма), /faq.html (FAQ).
 pages:
   stage: deploy
   rules:
@@ -11,6 +9,10 @@ pages:
     - mkdir -p public
     - cp "Документация по ClickHouse/diagram/er_diagram.html" public/index.html
     - cp -r "Документация по ClickHouse/js" public/js
+    - cp "Документация по ClickHouse/faq/faq.html" public/faq.html
+    # Кнопка «FAQ» на главной. ER-диаграмма генерится скриптом — исходник не трогаем,
+    # ссылку вшиваем в копию (переживает перегенерацию er_diagram.html).
+    - sed -i 's|</body>|<a href="faq.html" title="FAQ по ClickHouse" style="position:fixed;top:12px;right:12px;z-index:1000;background:#45475a;color:#cdd6f4;text-decoration:none;border-radius:6px;padding:7px 14px;font-size:14px;font-family:Arial,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.45)">❓ FAQ</a></body>|' public/index.html
   artifacts:
     paths:
       - public

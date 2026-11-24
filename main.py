@@ -93,6 +93,8 @@ tables = client.query(f"""
     FROM system.tables
     WHERE database = '{CLICKHOUSE_DATABASE}'
       AND engine NOT IN ('View', 'MaterializedView', 'Dictionary')
+      AND is_temporary = 0
+      AND position(name, '.') = 0
     ORDER BY database, name
 """).result_rows
 
@@ -111,6 +113,7 @@ columns = client.query(f"""
         comment
     FROM system.columns
     WHERE database = '{CLICKHOUSE_DATABASE}'
+      AND position(table, '.') = 0
     ORDER BY database, table, position
 """).result_rows
 
